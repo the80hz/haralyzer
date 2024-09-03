@@ -7,13 +7,16 @@ import time
 import logging
 from haralyzer import HarParser
 
-# Настройка логгирования
-logging.basicConfig(filename='download_images.log',
-                    level=logging.INFO,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+# Настройка логгирования для записи в файл и вывода в консоль
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s',
+                    handlers=[
+                        logging.FileHandler('download_images.log'),
+                        logging.StreamHandler()
+                    ])
 
 # Регулярное выражение для извлечения основной части URL и удаления параметров
-PATTERN = r'(https://pbs\.twimg\.com/media/([a-zA-Z0-9_-]+))(\?.*)?'
+PATTERN = r'https://pbs\.twimg\.com/media/([a-zA-Z0-9_-]+)(\?.*)?'
 
 # Папка для сохранения изображений
 MEDIA_DIR = 'media'
@@ -26,10 +29,10 @@ if not os.path.exists(MEDIA_DIR):
 conn = sqlite3.connect('images.db')
 cursor = conn.cursor()
 
-# Создание таблицы для хранения ссылок и их статуса загрузки
+# Создание таблицы для хранения идентификаторов картинок и их статуса загрузки
 cursor.execute('''
 CREATE TABLE IF NOT EXISTS images (
-    url TEXT PRIMARY KEY,
+    image_id TEXT PRIMARY KEY,
     downloaded BOOLEAN
 )
 ''')
@@ -53,25 +56,22 @@ for entry in data:
 # Загрузка и сохранение картинок
 for link in image_urls:
     if 'media' in link:
-        # Применение регулярного выражения: удаляем старые параметры и добавляем новые
-        new_link = re.sub(PATTERN, r'\1?format=jpg&name=4096x4096', link)
-        
-        # Проверка, есть ли ссылка в базе данных и загружена ли она
-        cursor.execute('SELECT downloaded FROM images WHERE url = ?', (new_link,))
-        result = cursor.fetchone()
+        # Извлечение идентификатора из URL
+        match = re.search(PATTERN, link)
+        if match:
+            image_id = match.group(1)
+            new_link = f"https://pbs.twimg.com/media/{image_id}?format=jpg&name=4096x4096"
 
-        # Если картинки нет в базе данных или она не загружена, скачиваем её
-        if result is None or not result[0]:
-            try:
-                # Скачиваем картинку
-                # Задержка между загрузками
-                time.sleep(5)
-                response = requests.get(new_link)
-                if response.status_code == 200:
-                    # Извлечение идентификатора из URL
-                    match = re.search(PATTERN, new_link)
-                    if match:
-                        image_id = match.group(2)
+            # Проверка, есть ли идентификатор в базе данных и загружена ли картинка
+            cursor.execute('SELECT downloaded FROM images WHERE image_id = ?', (image_id,))
+            result = cursor.fetchone()
+
+            # Проверка на наличие и статус загрузки
+            if result is None or not bool(result[0]):
+                try:
+                    # Скачиваем картинку
+                    response = requests.get(new_link)
+                    if response.status_code == 200:
                         # Формируем путь к файлу в папке media
                         image_name = f"{image_id}.jpg"
                         image_path = os.path.join(MEDIA_DIR, image_name)
@@ -82,21 +82,22 @@ for link in image_urls:
                         
                         # Обновляем базу данных
                         cursor.execute('''
-                        INSERT OR REPLACE INTO images (url, downloaded) 
+                        INSERT OR REPLACE INTO images (image_id, downloaded) 
                         VALUES (?, ?)
-                        ''', (new_link, True))
+                        ''', (image_id, True))
                         
                         logging.info(f"Downloaded and saved: {new_link} as {image_path}")
                     else:
-                        logging.error(f"Failed to extract image ID from: {new_link}")
-                else:
-                    logging.error(f"Failed to download: {new_link} (Status code: {response.status_code})")
-            except Exception as e:
-                logging.error(f"Exception occurred while downloading {new_link}: {e}")
-        
+                        logging.error(f"Failed to download: {new_link} (Status code: {response.status_code})")
+                except Exception as e:
+                    logging.error(f"Exception occurred while downloading {new_link}: {e}")
             
+                # Задержка между загрузками
+                time.sleep(5)
+            else:
+                logging.info(f"Already downloaded: {new_link}")
         else:
-            logging.info(f"Already downloaded: {new_link}")
+            logging.error(f"Failed to extract image ID from: {link}")
 
 # Сохранение изменений и закрытие соединения с базой данных
 conn.commit()
