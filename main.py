@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS images (
 
 # Загрузка HAR файла
 try:
-    with open('x.com.har', 'r', encoding='utf-8') as f:
+    with open('x2.com.har', 'r', encoding='utf-8') as f:
         har_parser = HarParser(json.loads(f.read()))
 except Exception as e:
     logging.error(f"Failed to read HAR file: {e}")
@@ -75,23 +75,27 @@ for link in image_urls:
                         # Формируем путь к файлу в папке media
                         image_name = f"{image_id}.jpg"
                         image_path = os.path.join(MEDIA_DIR, image_name)
-                        
+
                         # Сохраняем картинку в файл
                         with open(image_path, 'wb') as img_file:
                             img_file.write(response.content)
-                        
+
                         # Обновляем базу данных
                         cursor.execute('''
                         INSERT OR REPLACE INTO images (image_id, downloaded) 
                         VALUES (?, ?)
                         ''', (image_id, True))
-                        
+
                         logging.info(f"Downloaded and saved: {new_link} as {image_path}")
+
+                        # Сохранение изменений в базе данных
+                        conn.commit()
+
                     else:
                         logging.error(f"Failed to download: {new_link} (Status code: {response.status_code})")
                 except Exception as e:
                     logging.error(f"Exception occurred while downloading {new_link}: {e}")
-            
+
                 # Задержка между загрузками
                 time.sleep(5)
             else:
@@ -99,6 +103,5 @@ for link in image_urls:
         else:
             logging.error(f"Failed to extract image ID from: {link}")
 
-# Сохранение изменений и закрытие соединения с базой данных
-conn.commit()
+# Закрытие соединения с базой данных
 conn.close()
