@@ -106,10 +106,16 @@ async def main():
             print('🚀 Скрипт запущен. Пожалуйста, начните скроллить страницу.')
 
             async def periodic_scan():
+                global total_found, total_saved
                 while True:
                     await asyncio.sleep(1)
+                    previous_saved = total_saved
                     await scan_posts(page, db)
-                    print(f'📊 Статистика: Всего найдено: {total_found}, сохранено: {total_saved}\n')
+                    if total_saved > previous_saved:
+                        print(f'📊 Статистика: Всего найдено: {total_found}, сохранено: {total_saved}\n')
+                    else:
+                        # Нет новых сохранённых постов, не выводим статистику
+                        pass
 
             # Запуск периодического сканирования в фоновом режиме
             scan_task = asyncio.create_task(periodic_scan())
