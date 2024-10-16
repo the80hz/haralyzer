@@ -36,12 +36,14 @@ async def extract_post_data(post, db):
                 return
 
         # Извлечение имени пользователя
-        username_element = await post.query_selector('a[href*="/"]')
+        username_container = await post.query_selector('[data-testid="User-Name"]')
         username = ''
-        if username_element:
-            username_href = await username_element.get_attribute('href')
-            if username_href:
-                username = username_href.strip('/').split('/')[0]
+        if username_container:
+            username_link = await username_container.query_selector('a[href^="/"]')
+            if username_link:
+                username_href = await username_link.get_attribute('href')
+                if username_href:
+                    username = username_href.strip('/').split('/')[0]
 
         # Извлечение даты
         time_element = await post.query_selector('time')
@@ -105,7 +107,7 @@ async def main():
 
             async def periodic_scan():
                 while True:
-                    await asyncio.sleep(1)  # Каждые 5 секунд
+                    await asyncio.sleep(1)
                     await scan_posts(page, db)
                     print(f'📊 Статистика: Всего найдено: {total_found}, сохранено: {total_saved}\n')
 
